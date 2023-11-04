@@ -1,0 +1,65 @@
+name: Build and deploy Docker app to Azure Function Apps
+
+on:
+  push:
+    branches:
+      - main
+      
+jobs:
+  build_and_deploy:
+    runs-on: ubuntu-latest
+    env:
+      AZURE_FUNCTIONAPP_NAME: "test-app"
+      IMAGE_NAME: "${{ secrets.REGISTRY_LOGIN_SERVER }}/<image_name>:${{ github.sha }}"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 'Login via Azure CLI'
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: 'Login to Azure Container Registry'
+        uses: azure/docker-login@v1
+        with:
+          login-server: ${{ secrets.REGISTRY_LOGIN_SERVER }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: 'Setup SSH keys'
+        run: |
+          mkdir -p -m 0700 ~/ssh_private_keys
+          ls -la ~/ssh_private_keys
+          echo "======================="
+          echo "$REPO1_SSH_KEY" > ~/ssh_private_keys/repo1_id_rsa
+          echo "$REPO2_SSH_KEY" > ~/ssh_private_keys/repo2_id_rsa
+        env: 
+          REPO1_SSH_KEY: ${{ secrets.PRIVATE_REPO1_SSH }}
+          REPO2_SSH_KEY: ${{ secrets.PRIVATE_REPO2_SSH }}
+
+      - name: 'Check SSH keys'
+        run: |
+          echo "======================"
+          ls -la ~
+          echo "======================"
+          ls -la ~/ssh_private_keys
+          
+
+      - name: 'Build and push image to ACR'
+        run: |
+          docker build --ssh repo1_ssh_key=~/ssh_private_keys/repo1_id_rsa --ssh repo2_ssh_key=~/ssh_private_keys/repo2_id_rsa -t ${{ env.IMAGE_NAME }} .
+          docker push ${{ env.IMAGE_NAME }}
+
+      - name: 'Remove SSH keys'
+        run: |
+          rm -rf ~/ssh_private_keys
+          echo "======================"
+          ls -la ~
+
+      - name: Deploy ACR Image to Azure Function App
+        uses: Azure/functions-container-action@v1
+        with:
+          app-name: ${{ env.AZURE_FUNCTIONAPP_NAME }}
+          image: ${{ env.IMAGE_NAME }}

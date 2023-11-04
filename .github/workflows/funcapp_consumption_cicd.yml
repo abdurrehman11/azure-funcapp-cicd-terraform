@@ -1,0 +1,53 @@
+name: Deploy app to Azure Function App
+
+on:
+  push:
+    branches:
+      - test
+      
+jobs:
+  build_and_deploy:
+    runs-on: ubuntu-latest
+    env:
+      AZURE_FUNCTIONAPP_NAME: "test-app-consumption"
+      FUNCTIONAPP_PATH: "./"
+      PYTHON_VERSION: "3.11"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python ${{ env.PYTHON_VERSION }} Environment
+        uses: actions/setup-python@v4
+        with:
+            python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: "Setup SSH Keys"
+        uses: webfactory/ssh-agent@v0.7.0
+        with:
+            ssh-private-key: |
+                ${{ secrets.PRIVATE_REPO1_SSH }}
+                ${{ secrets.PRIVATE_REPO2_SSH }}
+
+      - name: Install dependencies
+        run: |
+            pushd $GITHUB_WORKSPACE
+            python -m pip install --upgrade pip
+            pip install -r requirements.txt --target=".python_packages/lib/site-packages"
+            popd
+
+      - name: List Files (Bash)
+        run: |
+            target_path=$GITHUB_WORKSPACE
+            echo $target_path
+            ls -al "$target_path"
+            find $target_path/.python_packages -type f | wc -l
+            find $target_path -type d
+
+      - name: 'Deploy to Azure Functions'
+        uses: Azure/functions-action@v1
+        id: deploy-to-function
+        with:
+            app-name: ${{ env.AZURE_FUNCTIONAPP_NAME }}
+            package: ${{ env.FUNCTIONAPP_PATH }}
+            publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
